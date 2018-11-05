@@ -32,23 +32,34 @@ defmodule PhoenixAlexa.ValidateApplicationId do
     |> within_allowed_time_window?
     |> update_alexa_validation(conn)
 
+    IO.puts("#{conn.body_params["request"]["timestamp"]}")
+    IO.puts("Validate Timestamp: #{conn.assigns[:valid_alexa_request]}")
+
     conn
   end
 
   def validate_application_id(conn, applicationId) do
     matching = conn.body_params["session"]["application"]["applicationId"] == applicationId
+
+    IO.puts("#{conn.body_params["session"]["application"]["applicationId"]} / #{applicationId}")
+    IO.puts("App ID: #{matching}")
     update_alexa_validation(matching, conn)
   end
 
   def validate_signature(conn) do
     raw_body = conn.private[:raw_body]
 
+    conn =
+      conn
+      |> get_req_header("signaturecertchainurl")
+      |> Enum.at(0)
+      |> retrieve_pem
+      |> validate_pem(conn)
+      |> update_alexa_validation(conn)
+
+    IO.puts("Validate Signature: #{conn.assigns[:valid_alexa_request]}")
+
     conn
-    |> get_req_header("signaturecertchainurl")
-    |> Enum.at(0)
-    |> retrieve_pem
-    |> validate_pem(conn)
-    |> update_alexa_validation(conn)
   end
 
   def validate_signature_chain_url(conn) do
@@ -63,14 +74,19 @@ defmodule PhoenixAlexa.ValidateApplicationId do
   defp validate_uri(%URI{authority: "s3.amazonaws.com", scheme: "https", port: 443} = uri) do
     case Regex.run(~r|/echo.api/|, uri.path) do
       nil ->
+        IO.puts("Validate URI: false #{inspect(uri)}")
         false
 
       _ ->
+        IO.puts("Validate URI: true #{inspect(uri)}")
         true
     end
   end
 
-  defp validate_uri(invalid_uri), do: false
+  defp validate_uri(invalid_uri) do
+    IO.puts("Validate URI: fallthrough false #{inspect(invalid_uri)}")
+    false
+  end
 
   defp within_allowed_time_window?({:ok, timestamp, _offset}) do
     Timex.diff(DateTime.utc_now(), timestamp, :seconds) < 150
